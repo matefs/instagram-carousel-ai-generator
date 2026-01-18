@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstaCarousel AI - Builder</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.4/html-to-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        .font-aktiv { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }
+        .card-overlay { background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.8) 50%, #000 100%); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        #render-area { position: fixed; left: -9999px; top: 0; pointer-events: none; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        
+        /* Efeito gradiente animado para o botão AI */
+        .ai-gradient {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed, #db2777);
+            background-size: 200% 200%;
+            animation: gradient-anim 3s ease infinite;
+        }
+        @keyframes gradient-anim {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen overflow-hidden flex flex-col">
+
+    <div id="app" class="h-full flex flex-col"></div>
+
+    <template id="app-template">
+        <header class="bg-white border-b border-gray-200 h-14 md:h-16 shrink-0 z-20 px-3 md:px-6 flex items-center justify-between flex-wrap gap-2 md:gap-3">
+            <div class="flex items-center gap-2 md:gap-3">
+                <div class="bg-amber-600 text-white p-1 md:p-1.5 rounded-lg">
+                    <span class="material-symbols-outlined block text-[20px] md:text-[24px]">view_carousel</span>
+                </div>
+                <div class="hidden sm:block">
+                    <h1 class="font-bold text-gray-900 leading-tight text-sm md:text-base">InstaCarousel <span class="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full ml-1">AI Ready</span></h1>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-1 md:gap-3 flex-wrap md:flex-nowrap justify-end">
+                <button @click="showSidebarMobile = !showSidebarMobile" class="lg:hidden text-gray-600 hover:text-gray-900 p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                    <span class="material-symbols-outlined text-[20px]">{{ showSidebarMobile ? 'close' : 'menu' }}</span>
+                </button>
+
+                <button @click="openAIModal" class="ai-gradient text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-bold shadow-lg hover:shadow-xl transition-all flex items-center gap-1 md:gap-2 text-xs md:text-sm border border-white/20">
+                    <span class="material-symbols-outlined text-[18px] md:text-[20px]">auto_awesome</span>
+                    <span class="hidden sm:inline">Criar com IA</span>
+                </button>
+
+                <div class="h-6 w-px bg-gray-300 hidden md:block"></div>
+
+                <div class="hidden md:flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-1.5 rounded-md">
+                    <span class="material-symbols-outlined text-[18px]">folder_open</span>
+                    <input type="text" v-model="projectTitle" class="bg-transparent border-none focus:ring-0 p-0 w-32 text-sm font-medium outline-none" placeholder="Nome do Projeto">
+                </div>
+
+                <button @click="exportCarousel" :disabled="isExporting" class="flex items-center gap-1 md:gap-2 bg-gray-900 hover:bg-black text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium transition-all text-xs md:text-sm disabled:opacity-70">
+                    <span v-if="!isExporting" class="material-symbols-outlined text-[18px] md:text-[20px]">download</span>
+                    <span v-else class="material-symbols-outlined text-[18px] md:text-[20px] animate-spin">progress_activity</span>
+                    <span class="hidden sm:inline">{{ isExporting ? 'Baixando...' : 'Baixar' }}</span>
+                </button>
+
+                <button @click="clearAllData" class="flex items-center gap-1 md:gap-2 bg-red-600 hover:bg-red-700 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium transition-all text-xs md:text-sm" title="Limpar todos os dados">
+                    <span class="material-symbols-outlined text-[18px] md:text-[20px]">delete_sweep</span>
+                    <span class="hidden sm:inline">Limpar Dados</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Backdrop para drawer em mobile -->
+        <transition name="fade">
+            <div v-if="showSidebarMobile" class="fixed inset-0 bg-black/40 z-30 lg:hidden" @click="showSidebarMobile = false"></div>
+        </transition>
+
+        <main class="flex-1 flex overflow-hidden flex-col lg:flex-row relative">
+            <!-- Drawer/Sidebar -->
+            <aside class="fixed lg:static left-0 top-14 md:top-16 bottom-0 w-72 lg:w-64 xl:w-72 bg-white border-r border-gray-200 flex flex-col shrink-0 z-40 lg:z-10 transform transition-transform duration-300 ease-in-out" :class="showSidebarMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'">
+                <div class="p-3 md:p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h2 class="font-semibold text-gray-700 text-xs md:text-sm uppercase tracking-wide">Slides ({{ slides.length }})</h2>
+                    <button @click="addSlide" class="text-amber-600 hover:text-amber-700 p-1 hover:bg-amber-50 rounded"><span class="material-symbols-outlined">add_circle</span></button>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-3 space-y-2 md:space-y-3">
+                    <div v-for="(slide, index) in slides" :key="slide.id" @click="currentSlideIndex = index" :class="currentSlideIndex === index ? 'border-amber-500 ring-2 ring-amber-100' : 'border-transparent hover:border-gray-300'" class="group relative cursor-pointer rounded-lg border-2 transition-all overflow-hidden bg-gray-100 h-24 md:h-32">
+                        <div class="absolute top-1 left-1 bg-black/70 text-white text-[8px] md:text-[10px] font-bold px-1 md:px-1.5 py-0.5 rounded z-10">{{ index + 1 }}</div>
+                        <div class="aspect-[470/498] bg-gray-800 w-full h-full relative">
+                            <img :src="slide.image" class="w-full h-full object-cover opacity-60" crossorigin="anonymous">
+                        </div>
+                        <div class="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button @click.stop="deleteSlide(index)" class="bg-white text-gray-600 p-1 rounded shadow hover:text-red-600"><span class="material-symbols-outlined text-[14px]">delete</span></button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="flex-1 bg-gray-100 relative overflow-hidden flex flex-col min-h-[300px] md:min-h-[400px]">
+                <div class="flex-1 flex items-center justify-center p-2 md:p-8 overflow-auto">
+                    <div id="main-preview" class="relative bg-black shadow-2xl" style="width: min(90vw, 470px); height: auto; aspect-ratio: 470/498; flex-shrink: 0;">
+                        <img :src="currentSlide.image" class="absolute inset-0 w-full h-full object-fill" crossorigin="anonymous">
+                        <div class="absolute inset-0 card-overlay flex flex-col justify-end pb-[30px] md:pb-[43px] pt-[80px] md:pt-[130px] text-center">
+                            <h3 class="font-aktiv font-bold text-[13pt] md:text-[16.5pt] leading-[140%] tracking-[0.4px] mx-[25px] md:mx-[40px] mb-[12px] md:mb-[16px] drop-shadow-[1px_1px_0_rgba(0,0,0,0.6)]" :style="{color: currentSlide.textColor || '#c09f7b'}">{{ currentSlide.text }}</h3>
+                            <span v-if="currentSlide.author" class="block font-aktiv font-medium text-[9pt] md:text-[10.5pt]  mx-[20px] md:mx-[30px] mb-[25px] md:mb-[35px] whitespace-pre-wrap" :style="{color: currentSlide.authorColor || '#c09f7b'}">{{ currentSlide.author }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <aside class="w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col shrink-0 z-10 max-h-96 lg:max-h-none">
+                <div class="p-3 md:p-5 border-b border-gray-100"><h3 class="font-bold text-gray-800 text-sm md:text-base">Editar Slide {{ currentSlideIndex + 1 }}</h3></div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-5 space-y-3 md:space-y-6">
+                    <div class="space-y-1.5 md:space-y-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Texto</label>
+                        <textarea v-model="currentSlide.text" rows="4" maxlength="250" class="w-full p-2 md:p-3 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:border-amber-500 outline-none resize-none"></textarea>
+                    </div>
+                    <div class="space-y-1.5 md:space-y-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Subtítulo</label>
+                        <textarea v-model="currentSlide.author" rows="3" class="w-full p-2 md:p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:border-amber-500 outline-none resize-none" placeholder="Use Enter para quebras de linha"></textarea>
+                    </div>
+                    <div class="space-y-1.5 md:space-y-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Imagem URL</label>
+                        <input type="text" v-model="currentSlide.image" class="w-full p-2 md:p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:border-amber-500 outline-none">
+                    </div>
+                    <div class="space-y-1.5 md:space-y-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Cor do Título</label>
+                        <input type="color" v-model="currentSlide.textColor" class="w-full h-10 rounded-lg cursor-pointer border border-gray-300" @change="applyColorToAll ? applyColorsToAllSlides() : saveCarouselData()">
+                    </div>
+                    <div class="space-y-1.5 md:space-y-2">
+                        <label class="block text-xs font-bold text-gray-500 uppercase">Cor do Subtítulo</label>
+                        <input type="color" v-model="currentSlide.authorColor" class="w-full h-10 rounded-lg cursor-pointer border border-gray-300" @change="applyColorToAll ? applyColorsToAllSlides() : saveCarouselData()">
+                    </div>
+                    <div class="flex items-center gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                        <input type="checkbox" v-model="applyColorToAll" id="applyToAll" class="w-4 h-4 cursor-pointer">
+                        <label for="applyToAll" class="text-xs font-bold text-amber-900 cursor-pointer">Aplicar para todos os slides</label>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <div id="render-area">
+            <div v-for="(slide, index) in slides" :key="'render-' + index" :id="'slide-render-' + index" class="relative bg-black overflow-hidden" style="width: 470px; height: 498px;">
+                <img :src="slide.image" class="absolute inset-0 w-full h-full object-fill" crossorigin="anonymous">
+                <div class="absolute inset-0 card-overlay flex flex-col justify-end pb-[43px] pt-[130px] text-center">
+                    <h3 class="font-aktiv font-bold text-[16.5pt] leading-[140%] tracking-[0.4px] mx-[40px] mb-[16px] drop-shadow-[1px_1px_0_rgba(0,0,0,0.6)]" :style="{color: slide.textColor || '#c09f7b'}">{{ slide.text }}</h3>
+                    <span v-if="slide.author" class="block font-aktiv font-medium text-[10.5pt] tracking-[-0.1px] uppercase mx-[30px] mb-[35px] whitespace-pre-wrap" :style="{color: slide.authorColor || '#c09f7b'}">{{ slide.author }}</span>
+                </div>
+            </div>
+        </div>
+
+        <transition name="fade">
+            <div v-if="showAIModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 md:p-4">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div class="p-4 md:p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white sticky top-0">
+                        <h3 class="text-lg md:text-xl font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined">auto_awesome</span>
+                            Gerador de Conteúdo
+                        </h3>
+                        <p class="text-indigo-100 text-xs md:text-sm mt-1">Digite um tema e deixe a IA escrever e buscar imagens.</p>
+                    </div>
+                    
+                    <div class="p-4 md:p-6 space-y-4 md:space-y-5">
+                        <div>
+                            <label class="block text-xs md:text-sm font-bold text-gray-700 mb-2">Sobre o que você quer falar?</label>
+                            <input type="text" v-model="aiTopic" placeholder="Ex: Estoicismo, Marketing Digital..." class="w-full p-2 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-base md:text-lg">
+                        </div>
+
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <button @click="showApiSettings = !showApiSettings" class="w-full flex justify-between items-center p-2 md:p-3 bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                <span>Configuração de APIs</span>
+                                <span class="material-symbols-outlined text-sm transform transition-transform" :class="showApiSettings ? 'rotate-180' : ''">expand_more</span>
+                            </button>
+                            
+                            <div v-if="showApiSettings" class="p-3 md:p-4 bg-white space-y-3">
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Groq API Key</label>
+                                    <input type="password" v-model="groqKey" @change="saveKeys" placeholder="gsk_..." class="w-full p-2 border border-gray-300 rounded text-xs md:text-sm font-mono bg-gray-50">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-600 mb-1">Unsplash Access Key</label>
+                                    <input type="password" v-model="unsplashKey" @change="saveKeys" placeholder="Client-ID..." class="w-full p-2 border border-gray-300 rounded text-xs md:text-sm font-mono bg-gray-50">
+                                </div>
+                                <p class="text-[10px] text-gray-400">As chaves ficam salvas apenas no seu navegador.</p>
+                            </div>
+                        </div>
+
+                        <div v-if="isGenerating" class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <div class="flex items-center gap-2 text-xs md:text-sm text-purple-700 font-medium animate-pulse">
+                                <span class="material-symbols-outlined text-lg animate-spin">smart_toy</span>
+                                {{ generationStatus }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-3 md:p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2 md:gap-3 sticky bottom-0">
+                        <button @click="showAIModal = false" class="px-3 md:px-4 py-1.5 md:py-2 text-gray-600 hover:bg-gray-200 rounded-lg font-medium text-xs md:text-sm">Cancelar</button>
+                        <button @click="generateContent" :disabled="!aiTopic || isGenerating" class="px-4 md:px-6 py-1.5 md:py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg font-bold shadow-md transition-all flex items-center gap-2 text-xs md:text-sm">
+                            <span v-if="!isGenerating">Gerar Carrossel</span>
+                            <span v-else>Processando...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+    </template>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        // --- ENGENHARIA DE PROMPT (AS REGRAS) ---
+        // Este é o prompt do sistema que você enviará para o Groq.
+        // Ele define a estrutura JSON estrita para garantir Texto + Autor + Termo de Imagem.
+        const SYSTEM_PROMPT = `
+Você é um Estrategista de Conteúdo Viral + Copywriter Sênior focado em performance.
+Seu objetivo é criar carrosséis altamente técnicos, escaneáveis e visualmente fortes, feitos para retenção, salvamento e compartilhamento.
+
+Você escreve para um público avançado, impaciente e orientado a resultado.
+Nada de teoria vaga. Nada de motivação genérica. Só execução clara e aplicável.
+
+────────────────────────────────
+REGRAS DE SAÍDA (OBRIGATÓRIO)
+────────────────────────────────
+1. Retorne APENAS um objeto JSON válido.
+2. NÃO inclua explicações, comentários ou qualquer texto fora do JSON.
+3. Siga EXATAMENTE o schema abaixo. Quebra de regra = erro.
+4. É PROIBIDO usar emojis, hífens, listas, marcadores ou símbolos.
+5. O carrossel DEVE ter no máximo 5 slides.
+6. TODOS os slides DEVEM estar relacionados ao mesmo tema e seguir progressão lógica.
+
+{
+  "slides": [
+    {
+      "text": "Título curto, específico e agressivo. Máx 100 caracteres.",
+      "author": "Subtítulo curto, direto e técnico. Máx 150 caracteres.",
+      "image_search_query": "Busca visual em INGLÊS para Unsplash. A imagem DEVE mostrar uma PESSOA realizando uma AÇÃO clara, literal e diretamente relacionada ao texto do slide."
+    }
+  ]
+}
+
+────────────────────────────────
+REGRA DE COERÊNCIA GLOBAL
+────────────────────────────────
+Cada slide representa uma etapa do MESMO raciocínio.
+Nenhum slide pode ser uma lista solta ou tarefas desconectadas.
+Existe começo, desenvolvimento e fechamento.
+
+────────────────────────────────
+REGRA MAIS IMPORTANTE SOBRE IMAGENS
+────────────────────────────────
+As imagens NÃO são conceituais.
+As imagens NÃO são abstratas.
+As imagens DEVEM mostrar ações reais.
+
+Sempre mostrar:
+pessoas reais
+ações visíveis
+objetos concretos
+contexto identificável
+
+Se o texto fala de planejamento, a imagem mostra alguém planejando.
+Se fala de análise, alguém analisando.
+Se fala de erro, alguém lidando com erro.
+
+────────────────────────────────
+MAPEAMENTO OBRIGATÓRIO TEXTO → IMAGEM
+────────────────────────────────
+Antes de gerar o image_search_query, responda mentalmente:
+Quem está fazendo o quê?
+Com qual objeto?
+Em qual contexto?
+
+Formato obrigatório:
+PERSON + ACTION + OBJECT + CONTEXT + STYLE
+
+────────────────────────────────
+REGRAS CRÍTICAS PARA image_search_query
+────────────────────────────────
+1. Cada slide DEVE ter um image_search_query ÚNICO.
+2. É PROIBIDO repetir ações, objetos, cenas ou estilos.
+3. A imagem DEVE representar o MICRO-CONCEITO do slide.
+4. Sempre priorizar pessoas em ação.
+5. Se duas imagens parecerem a mesma cena, a resposta é INVÁLIDA.
+
+Palavras proibidas:
+abstract
+concept
+illustration
+background
+pattern
+icon
+symbol
+flat lay
+no people
+
+────────────────────────────────
+REGRA ABSOLUTA DO ÚLTIMO SLIDE (CTA FINAL)
+────────────────────────────────
+O ÚLTIMO SLIDE NÃO PODE TER TÍTULO.
+O ÚLTIMO SLIDE NÃO PODE TER SUBTÍTULO.
+O ÚLTIMO SLIDE NÃO PODE TER FRASE INTRODUTÓRIA.
+
+No último slide:
+"text" DEVE ser uma string vazia.
+"author" DEVE conter SOMENTE as três linhas abaixo.
+
+Formato OBRIGATÓRIO e ÚNICO do CTA FINAL:
+Salve este post
+Curta agora
+Compartilhe com quem precisa
+
+É PROIBIDO:
+Adicionar qualquer linha antes ou depois
+Adicionar títulos como “Ação”, “CTA”, “Passo final”
+Criar variações
+Usar sinônimos
+Explicar
+
+Se existir QUALQUER texto além dessas três linhas, a resposta é INVÁLIDA.
+
+────────────────────────────────
+TOM DE VOZ
+────────────────────────────────
+Autoritário
+Confiante
+Direto
+Sem introdução
+Sem pedir permissão
+
+────────────────────────────────
+ENTRADA DO USUÁRIO
+────────────────────────────────
+{{TOPIC}}
+
+`;
+
+        createApp({
+            template: '#app-template',
+            setup() {
+                // State Principal
+                const projectTitle = ref('Carrossel IA');
+                const slides = ref([
+                    { id: 1, text: 'O que eu preciso mudar é o coração...', author: 'Santa Rita', image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=500&h=500&fit=crop', textColor: '#c09f7b', authorColor: '#c09f7b' }
+                ]);
+                const currentSlideIndex = ref(0);
+                const showSidebarMobile = ref(false);
+                const applyColorToAll = ref(false);
+                
+                // State IA
+                const showAIModal = ref(false);
+                const aiTopic = ref('');
+                const showApiSettings = ref(false);
+                const isGenerating = ref(false);
+                const generationStatus = ref('');
+                
+                // State Keys (Carregadas do LocalStorage)
+                const groqKey = ref(localStorage.getItem('groq_key') || '');
+                const unsplashKey = ref(localStorage.getItem('unsplash_key') || '');
+
+                const currentSlide = computed(() => slides.value[currentSlideIndex.value]);
+
+                // --- Métodos Básicos ---
+                const deleteSlide = (index) => {
+                    if (slides.value.length <= 1) return;
+                    slides.value.splice(index, 1);
+                    if (currentSlideIndex.value >= slides.value.length) currentSlideIndex.value = slides.value.length - 1;
+                    saveCarouselData();
+                };
+
+                const addSlide = () => {
+                    slides.value.push({ id: Date.now(), text: 'Nova ideia...', author: 'Você', image: slides.value[slides.value.length-1].image, textColor: '#c09f7b', authorColor: '#c09f7b' });
+                    currentSlideIndex.value = slides.value.length - 1;
+                    saveCarouselData();
+                };
+
+                // --- GESTÃO DE CHAVES E MODAL ---
+                const openAIModal = () => {
+                    showAIModal.value = true;
+                    // Abre settings se não tiver chaves
+                    if(!groqKey.value || !unsplashKey.value) showApiSettings.value = true;
+                };
+
+                const saveKeys = () => {
+                    localStorage.setItem('groq_key', groqKey.value);
+                    localStorage.setItem('unsplash_key', unsplashKey.value);
+                };
+
+                const saveCarouselData = () => {
+                    const data = {
+                        slides: slides.value,
+                        projectTitle: projectTitle.value,
+                        currentSlideIndex: currentSlideIndex.value
+                    };
+                    localStorage.setItem('carousel_data', JSON.stringify(data));
+                };
+
+                const loadCarouselData = () => {
+                    const savedData = localStorage.getItem('carousel_data');
+                    if (savedData) {
+                        try {
+                            const data = JSON.parse(savedData);
+                            slides.value = data.slides || slides.value;
+                            projectTitle.value = data.projectTitle || projectTitle.value;
+                            currentSlideIndex.value = data.currentSlideIndex || 0;
+                            console.log("📥 Dados carregados do localStorage:", data);
+                        } catch (e) {
+                            console.error("❌ Erro ao carregar dados:", e);
+                        }
+                    }
+                };
+
+                const applyColorsToAllSlides = () => {
+                    slides.value.forEach(slide => {
+                        slide.textColor = currentSlide.value.textColor;
+                        slide.authorColor = currentSlide.value.authorColor;
+                    });
+                    saveCarouselData();
+                    console.log("🎯 Cores aplicadas para todos os slides!");
+                };
+
+                const clearAllData = () => {
+                    if (confirm('Tem certeza que deseja apagar TODOS os dados? Esta ação não pode ser desfeita.')) {
+                        localStorage.removeItem('carousel_data');
+                        localStorage.removeItem('groq_key');
+                        localStorage.removeItem('unsplash_key');
+                        slides.value = [{ id: 1, text: 'Nova ideia...', author: 'Você', image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=500&h=500&fit=crop', textColor: '#c09f7b', authorColor: '#c09f7b' }];
+                        projectTitle.value = 'Carrossel IA';
+                        currentSlideIndex.value = 0;
+                        console.log("🗑️ Todos os dados foram apagados");
+                        alert('Dados apagados com sucesso!');
+                    }
+                };
+
+                // Carrega dados ao inicializar
+                onMounted(() => {
+                    loadCarouselData();
+                });
+
+                // --- LÓGICA DE INTEGRAÇÃO (O CORE DA IA) ---
+                const generateContent = async () => {
+                    if (!groqKey.value) {
+                        alert('Por favor, insira sua chave da API Groq nas configurações.');
+                        showApiSettings.value = true;
+                        return;
+                    }
+
+                    isGenerating.value = true;
+                    
+                    try {
+                        // 1. Chamada ao Groq LLM
+                        generationStatus.value = 'Consultando o oráculo (Groq)...';
+                        console.log(">> Prompt enviado:", SYSTEM_PROMPT);
+                        console.log(">> Tópico:", aiTopic.value);
+
+                        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${groqKey.value}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                messages: [
+                                    { role: "system", content: SYSTEM_PROMPT },
+                                    { role: "user", content: `Tópico: ${aiTopic.value}` }
+                                ],
+                                model: "openai/gpt-oss-120b",
+                                temperature: 1,
+                                max_completion_tokens: 8192,
+                                top_p: 1
+                            })
+                        });
+
+                        if (!groqResponse.ok) {
+                            const errorData = await groqResponse.json();
+                            console.error("❌ Erro Groq:", errorData);
+                            throw new Error(`Groq API error: ${errorData.error?.message || 'Unknown error'}`);
+                        }
+
+                        const data = await groqResponse.json();
+                        console.log(">> Resposta completa do Groq:", data);
+                        
+                        let content;
+                        try {
+                            content = JSON.parse(data.choices[0].message.content);
+                        } catch (e) {
+                            console.error("❌ Erro ao parsear JSON:", e);
+                            console.log(">> Conteúdo bruto:", data.choices[0].message.content);
+                            throw new Error('Resposta do Groq não é um JSON válido');
+                        }
+                        
+                        console.log(">> Conteúdo parseado:", content);
+                        const LLMResponse = content;
+
+                        // 2. Busca de Imagens no Unsplash (Iterar sobre os slides gerados)
+                        generationStatus.value = 'Buscando imagens perfeitas (Unsplash)...';
+                        
+                        const newSlides = [];
+                        
+                        for (const item of LLMResponse.slides) {
+                            let imageUrl = 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=500&h=500&fit=crop'; // Fallback quadrado
+                            
+                            try {
+                                if (unsplashKey.value && item.image_search_query) {
+                                    console.log(`>> Buscando imagem para: ${item.image_search_query}`);
+                                    const unsplashRes = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(item.image_search_query)}&per_page=1&orientation=squarish`, {
+                                        headers: { 'Authorization': `Client-ID ${unsplashKey.value}` }
+                                    });
+
+                                    if (!unsplashRes.ok) {
+                                        const errorData = await unsplashRes.json();
+                                        console.warn(`⚠️ Erro Unsplash para "${item.image_search_query}":`, errorData);
+                                    } else {
+                                        const imgData = await unsplashRes.json();
+                                        console.log(`>> Resposta Unsplash:`, imgData);
+                                        if(imgData.results && imgData.results[0]) {
+                                            imageUrl = imgData.results[0].urls.regular;
+                                            console.log(`✅ Imagem encontrada: ${imageUrl}`);
+                                        } else {
+                                            console.warn(`⚠️ Nenhuma imagem encontrada para: ${item.image_search_query}`);
+                                        }
+                                    }
+                                }
+                            } catch (imgError) {
+                                console.error(`❌ Erro ao buscar imagem: ${item.image_search_query}`, imgError);
+                            }
+
+                            newSlides.push({
+                                id: Date.now() + Math.random(),
+                                text: item.text,
+                                author: item.author,
+                                image: imageUrl
+                            });
+                        }
+
+                        // 3. Atualizar a UI
+                        console.log(">> Slides finais criados:", newSlides);
+                        slides.value = newSlides;
+                        currentSlideIndex.value = 0;
+                        projectTitle.value = aiTopic.value;
+                        showAIModal.value = false;
+                        aiTopic.value = ''; // Limpa input
+                        
+                        // Salva no localStorage
+                        saveCarouselData();
+                        console.log("💾 Dados salvos no localStorage");
+                        console.log("✅ Carrossel gerado com sucesso!");
+
+                    } catch (error) {
+                        console.error(error);
+                        alert('Erro ao gerar conteúdo. Verifique o console.');
+                    } finally {
+                        isGenerating.value = false;
+                    }
+                };
+
+                // --- Export (Mantido igual) ---
+                const isExporting = ref(false);
+                const exportCarousel = async () => {
+                    isExporting.value = true;
+                    try {
+                        const zip = new JSZip();
+                        const name = projectTitle.value.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                        await new Promise(r => setTimeout(r, 100));
+                        for (let i = 0; i < slides.value.length; i++) {
+                            const node = document.getElementById(`slide-render-${i}`);
+                            if (node) {
+                                const blob = await htmlToImage.toBlob(node, { quality: 0.95, backgroundColor: '#000' });
+                                zip.folder(name).file(`${i+1}.jpg`, blob);
+                            }
+                        }
+                        const content = await zip.generateAsync({type:"blob"});
+                        saveAs(content, `${name}.zip`);
+                    } catch (e) { alert('Erro CORS na imagem. Use imagens locais ou do Unsplash.'); } 
+                    finally { isExporting.value = false; }
+                };
+
+                return {
+                    slides, currentSlideIndex, currentSlide, projectTitle, isExporting, 
+                    addSlide, deleteSlide, exportCarousel, showSidebarMobile, saveCarouselData, clearAllData, applyColorToAll, applyColorsToAllSlides,
+                    // AI Stuff
+                    showAIModal, openAIModal, aiTopic, generateContent, 
+                    showApiSettings, groqKey, unsplashKey, saveKeys, isGenerating, generationStatus
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
